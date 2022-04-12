@@ -2,7 +2,7 @@
 //!
 //! Utilities to configure the text editor.
 
-use std::fmt::Display;
+use std::fmt::{Display, format};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
@@ -43,7 +43,35 @@ impl Config {
     ///
     /// Will return `Err` if one of the configuration file cannot be parsed properly.
     pub fn load() -> Result<Self, Error> {
-        todo!()
+        let mut conf = Self::default();
+
+        let paths: Vec<_> = cdirs()
+            .iter()
+            .map(|d| Path::from(d).join("config.ini"))
+            .collect();
+
+        for path in paths
+            .iter()
+            .filter(|p| p.is_file())
+            .rev()
+        {
+            process_ini_file(path, &mut |key, value| {
+                match key {
+                    "tab_stop" => match parse_value(value)? {
+                        0 => return Err("tab_stop must be > 0".into()),
+                        tab_stop => conf.tab_stop = tab_stop
+                    },
+                    "quit_times" => conf.quit_times = parse_value(value)?,
+                    "message_duration" =>
+                        conf.message_dur = Duration::from_secs_f32(parse_value(value)?),
+                    "show_line_numbers" => conf.show_line_num = parse_value(value)?,
+                    _ => return Err(format!("Invalid keyL {}", key))
+                };
+                Ok(())
+            })?;
+        }
+
+        Ok(conf)
     }
 }
 
@@ -52,14 +80,16 @@ impl Config {
 /// The `kv_fn` function will be called for each key-value pair in the file. Tyoically, this
 /// function will update a configuration instance.
 pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
-where F: FnMut(&str, &str) -> Result<(), String> { todo!() }
+    where F: FnMut(&str, &str) -> Result<(), String> { todo!() }
 
 /// Trim a value (right-hand side of a key=value INI line) and parses it.
-pub fn parse_value<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<T, String> { todo!() }
+pub fn parse_value<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<T, String> { todo!() }
 
 /// Split a comma-separated list of values (right-hand side of a key=value1, value2, ... INI line) and
 /// parse it as a Vec.
-pub fn parse_values<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<Vec<T>, String> { todo!() }
+pub fn parse_values<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<Vec<T>, String> { todo!() }
 
 #[cfg(test)]
-mod tests { todo!(); }
+mod tests {
+    todo!();
+}
