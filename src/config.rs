@@ -2,6 +2,7 @@
 //!
 //! Utilities to configure the text editor.
 
+use std::path::Path;
 use std::time::Duration;
 
 use crate::Error;
@@ -40,6 +41,13 @@ impl Config {
     ///
     /// Will return `Err` if one of the configuration file cannot be parsed properly.
     pub fn load() -> Result<Self, Error> {
-        !todo!()
+        todo!()
     }
 }
+
+/// Process an INI file.
+///
+/// The `kv_fn` function will be called for each key-value pair in the file. Tyoically, this
+/// function will update a configuration instance.
+pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
+where F: FnMut(&str, &str) -> Result<(), String> { todo!() }
