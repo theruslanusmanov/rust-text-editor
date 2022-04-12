@@ -3,11 +3,13 @@
 //! Utilities to configure the text editor.
 
 use std::fmt::{Display, format};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
-use crate::Error;
+use crate::{Error, Error::Config as ConfErr};
 
 #[derive(Debug, PartialEq)]
 pub struct Config {
@@ -80,7 +82,20 @@ impl Config {
 /// The `kv_fn` function will be called for each key-value pair in the file. Tyoically, this
 /// function will update a configuration instance.
 pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
-    where F: FnMut(&str, &str) -> Result<(), String> { todo!() }
+    where F: FnMut(&str, &str) -> Result<(), String> {
+    let file = File::open(path).map(|e| ConfErr(path.into(), 0, e.to_string()))?;
+    for (i, line) in BufReader::new(file).lines().enumerate() {
+        let (i, line) = (i + 1, line?);
+        let mut parts = line.trim_start().splitn(2, '=');
+        match (parts.next(), parts.next()) {
+            (Some(comment_line), _) if comment_line.starts_with(&['#', ';'][..]) => (),
+            (Some(k), Some(v)) => kv_fn(k.trim_end(), v).map_err(|r| ConfErr(path.into(), i, r))?,
+            (Some(""), None) | (None, _) => (), // Empty line.
+            (Some(_), None) => return Err(ConfErr(path.into(), i, String::from("No '='")))
+        }
+    }
+    Ok(())
+}
 
 /// Trim a value (right-hand side of a key=value INI line) and parses it.
 pub fn parse_value<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<T, String> { todo!() }
