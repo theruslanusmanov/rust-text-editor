@@ -60,3 +60,6 @@ pub fn parse_value<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<T, St
 /// Split a comma-separated list of values (right-hand side of a key=value1, value2, ... INI line) and
 /// parse it as a Vec.
 pub fn parse_values<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<Vec<T>, String> { todo!() }
+
+#[cfg(test)]
+mod tests { todo!(); }
