@@ -54,5 +54,9 @@ impl Config {
 pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
 where F: FnMut(&str, &str) -> Result<(), String> { todo!() }
 
-/// Trim a value (right-hand side of a key-value INI line) and parses it.
+/// Trim a value (right-hand side of a key=value INI line) and parses it.
 pub fn parse_value<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<T, String> { todo!() }
+
+/// Split a comma-separated list of values (right-hand side of a key=value1, value2, ... INI line) and
+/// parse it as a Vec.
+pub fn parse_values<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<Vec<T>, String> { todo!() }
