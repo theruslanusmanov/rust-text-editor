@@ -2,7 +2,9 @@
 //!
 //! Utilities to configure the text editor.
 
+use std::fmt::Display;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 
 use crate::Error;
@@ -51,3 +53,6 @@ impl Config {
 /// function will update a configuration instance.
 pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
 where F: FnMut(&str, &str) -> Result<(), String> { todo!() }
+
+/// Trim a value (right-hand side of a key-value INI line) and parses it.
+pub fn parse_value<T: FromStr<Err = E>, E: Display>(value: &str) -> Result<T, String> { todo!() }
