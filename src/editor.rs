@@ -10,6 +10,7 @@ use crate::row::{HlState, Row};
 use crate::{ansi_escape::*, syntax::Conf as SyntaxConf, sys, terminal, Config, Error};
 
 const fn ctrl_key(key: u8) -> u8 { key & 0x1f }
+
 const EXIT: u8 = ctrl_key(b'Q');
 const DELETE_BIS: u8 = ctrl_key(b'H');
 const REFRESH_SCREEN: u8 = ctrl_key(b'L');
@@ -168,5 +169,34 @@ impl Editor {
         set_status!(editor, "{}", HELP_MESSAGE);
 
         Ok(editor)
+    }
+
+    /// Return the current row if the cursor points to an existing row, `None` otherwise.
+    fn current_row(&self) -> Option<&Row> { self.rows.get(self.cursor.y) }
+
+    /// Return the position of the cursor, in terms of rendered characters (as opposed to
+    /// `self.cursor.x`, which is the position of the cursor in terms of bytes).
+    fn rx(&self) -> usize { self.current_row().map_or(0, |r| r.cx2rx[self.cursor.x]) }
+
+    /// Move the cursor following an arrow key (← → ↑ ↓).
+    fn move_cursor(&mut self, key: &AKey) {
+        match (key, self.current_row()) {
+            (AKey::Left, Some(row)) if self.cursor.x > 0 =>
+                self.cursor.x -= row.get_char_size(row.cx2rx[self.cursor.x] - 1),
+            (AKey::Left, _) if self.cursor.y > 0 => {
+                // ← at the beginning of the line: move to the end of the previous line. The x
+                // position will be adjusted after this `match` to accommodate the current row
+                // length, so we can just set here to the maximum possible value here.
+                self.cursor.y -= 1;
+                self.cursor.x = usize::MAX;
+            }
+            (AKey::Right, Some(row)) if self.cursor.x < row.chars.len() =>
+                self.cursor.x += row.get_char_size(row.cx2rx[self.cursor.x]),
+            (AKey::Right, Some(_)) => self.cursor.move_to_next_line(),
+            (AKey::Up, _) if self.cursor.y > 0 => self.cursor.y -= 1,
+            (AKey::Down, Some(_)) => self.cursor.y += 1,
+            _ => (),
+        }
+        self.update_cursor_x_position();
     }
 }
