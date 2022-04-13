@@ -201,4 +201,91 @@ mod tests {
             Err(e) => panic!("Unexpected error {:?}", e),
         }
     }
+
+    struct TempEnvVar {
+        key: OsString,
+        orig_value: Option<OsString>,
+    }
+
+    impl TempEnvVar {
+        fn new(key: &OsStr, value: Option<&OsStr>) -> TempEnvVar {
+            let orig_value = env::var_os(key);
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
+            }
+            TempEnvVar {key: key.into(), orig_value }
+        }
+    }
+
+    impl Drop for TempEnvVar {
+        fn drop(&mut self) {
+            match self.orig_value {
+                Some(ref orig_value) => env::set_var(&self.key, orig_value),
+                None => env::remove_var(&self.key),
+            }
+        }
+    }
+
+    fn test_config_dir(env_key: &OsStr, env_val: &OsStr, config_home: &Path) {
+        let custom_config = Config { tab_stop: 99, quit_times: 50, ..Config::default() };
+        let ini_content = format!(
+            "# Configuration file
+             tab_stop  = {}
+             quit_times={}",
+            custom_config.tab_stop, custom_config.quit_times
+        );
+
+        fs::create_dir_all(&config_home).unwrap();
+
+        fs::write(config_home.join("config.ini"), ini_content)
+            .expect("Could not write INI file");
+
+        let config = Config::load().expect("Could not load configuration.");
+        assert_ne!(config, custom_config);
+
+        let config = {
+            let _temp_env_var = TempEnvVar::new(env_key, Some(env_val));
+            let config_res = Config::load();
+            config_res.expect("Could not load configuration.")
+        };
+
+        assert_eq!(config, custom_config);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn xdg_config_home() {
+        let tmp_config_home = TempDir::new().expect("Could not create temporary directory");
+        test_config_dir(
+            "XDG_CONFIG_HOME".as_ref(),
+            tmp_config_home.path().as_os_str(),
+            &tmp_config_home.path().join("rust-text-editor")
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn config_home() {
+        let _temp_env_var = TempEnvVar::new(OsStr::new("XDG_CONFIG_HOME"), None);
+        let tmp_home = TempDir::new().expect("Could not create temporary directory");
+        test_config_dir(
+            "HOME".as_ref(),
+            tmp_home.path().as_os_str(),
+            &tmp_home.path().join(".config/rust-text-editor"),
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[serial]
+    fn app_data() {
+        let tmp_home = TempDir::new().expect("Could not create temporary directory");
+        test_config_dir(
+            "APPDATA".as_ref(),
+            tmp_home.path().as_os_str(),
+            &tmp_home.path().join("rust-text-editor"),
+        );
+    }
 }
