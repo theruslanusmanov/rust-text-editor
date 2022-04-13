@@ -171,4 +171,34 @@ mod tests {
             Err(e) => panic!("Unexpected error {:?}", e)
         }
     }
+
+    #[test]
+    fn ini_processing_error_propagation() {
+        let ini_content = "# Comment A
+        ; Comment B
+        a = c
+            # Below is an empty line
+
+           variable    = 4
+        a = d5
+        u = v = w ";
+        let kv_fn = &mut |_: &str, _: &str| Err(String::from("test error"));
+        match ini_processing_helper(ini_content, kv_fn) {
+            Ok(_) => panic!("process_ini_file should return an error"),
+            Err(Error::Config(_, 3, s)) if s == "test error" => (),
+            Err(e) => panic!("Unexpected error {:?}", e),
+        }
+    }
+
+    #[test]
+    fn ini_processing_invalid_path() {
+        let kv_fn = &mut |_: &str, _: &str| Ok(());
+        let tmp_dir = TempDir::new().expect("Could not create temporary directory");
+        let tmp_path = tmp_dir.path().join("path_does_not_exist.ini");
+        match process_ini_file(&tmp_path, kv_fn) {
+            Ok(_) => panic!("process_ini_file should return an error"),
+            Err(Error::Config(path, 0, _)) if path == tmp_path => (),
+            Err(e) => panic!("Unexpected error {:?}", e),
+        }
+    }
 }
