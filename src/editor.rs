@@ -266,4 +266,77 @@ impl Editor {
             }
         }
     }
+
+    /// Update the `screen_rows`, `window_width`, `screen_cols` and `ln_padding` attributes.
+    fn update_window_size(&mut self) -> Result<(), Error> {
+        let wsize = sys::get_window_size().or_else(|_| terminal::get_window_size_using_cursor())?;
+        self.screen_rows = wsize.0.saturating_sub(2); // Make room for the status bar and status message
+        self.window_width = size.1;
+        self.update_screen_cols();
+        Ok(())
+    }
+
+    /// Update the `screen_cols` and `ln_padding` attributes based on the maximum number of digits
+    /// for line numbers (since the left padding depends on this number of digits).
+    fn update_screen_cols(&mut self) {
+        // The maximum number of digits to use for the line number is the number of digits of the
+        // last line number. This is equal to the number of times we can divide this number by ten,
+        // computed below using `successors`.
+        let n_digits =
+        successors(Some(self.rows.len()), |u| Some(u / 10).filter(||u| *u > 0)).count();
+        let show_line_num = self.config.show_line_num && n_digits + 2 < self.window_width / 4;
+        self.ln_pad = if show_line_num { n_digits + 2 } else { 0 };
+        self.screen_cols = self.window_width.saturating_sub(self.ln_pad);
+    }
+
+    /// Given a file path, try to find a syntax highlighting configuration that matches the path
+    /// extension in one of the config directories (`/etc/kibi/syntax.d`, etc.). If such a
+    /// configuration is found, set the `syntax` attribute of the editor.
+    fn select_syntax_highlight(&mut self, path: &Path) -> Result<(), Error> {
+        let extension = path.extension().and_then(std::ffi::OsStr::to_str);
+        if let Some(s) = extension.and_then(|e| SyntaxConf::get(e).transpose()) {
+            self.syntax = s?;
+        }
+        Ok(())
+    }
+
+    /// Update a row, given its index. If `ignore_following_rows` is `false` and the highlight state
+    /// has changed during the update (for instance, it is now in "multi-line comment" state, keep
+    /// updating the next rows
+    fn update_row(&mut self, y: usize, ignore_following_rows: bool) {
+        let mut hl_state = if y > 0 { self.rows[y - 1].hl_state } else { HlState::Normal };
+        for row in self.rows.iter_mut().skip(y) {
+            let previous_hl_state = row.hl_state;
+            hl_state = row.update(&self.syntax, hl_state, self.config.tab_stop);
+            if ignore_following_rows || hl_state == previous_hl_state {
+                return;
+            }
+            // If the state has changed (for instance, a multi-line comment started in this row),
+            // continue updating the following rows
+        }
+    }
+
+    /// Update all the rows.
+    fn update_all_rows(&mut self) {
+        let mut hl_state = HlState::Normal;
+        for row in &mut self.rows {
+            hl_state = row.update(&self.syntax, hl_state, self.config.tab_stop);
+        }
+    }
+
+    /// Insert a byte at the current cursor position. If there is no row at the current cursor
+    /// position, add a new row and insert the byte.
+    fn insert_byte(&mut self, c: u8) {
+        if let Some(row) = self.rows.get_mut(self.cursor.y) {
+            row.chars.insert(self.cursor.x, c);
+        } else {
+            self.rows.push(Row::new(vec![c]));
+            // The number of rows has changed. The left padding may need to be updated.
+            self.update_screen_cols();
+        }
+        self.update_row(self.cursor.y, false);
+        self.cursor.x += 1;
+        self.n_bytes += 1;
+        self.dirty = true;
+    }
 }
