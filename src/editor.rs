@@ -121,3 +121,52 @@ pub struct Editor {
     /// The original terminal mode. It will be restored when the `Editor` instance is dropped.
     orig_term_mode: Option<sys::TermMode>,
 }
+
+impl StatusMessage {
+    /// Create a new status message and set time to the current date/time.
+    fn new(msg: String) -> Self { Self { msg, time: Instant::now() } }
+}
+
+/// Pretty-format a size in bytes.
+fn format_size(n: u64) -> String {
+    if n < 1024 {
+        return format!("{}B", n);
+    }
+    // i is the largest value such that 1024 ^ i < n
+    // To find i we compute the smallest b such that n <= 1024 ^ b and subtract 1 from it
+    let i = (64 - n.leading_zeros() + 9) / 10 - 1;
+    // Compute the size with two decimal places (rounded down) as the last two digits of q
+    // This avoid float formatting reducing the binary size
+    let q = 100 * n / (1024 << ((i - 1) * 10));
+    format!("{}.{:02}{}B", q / 100, q % 100, b" kMGTPEZ"[i as usize] as char)
+}
+
+/// `slice_find` returns the index of `needle` in slice `s` if `needle` is a subslice of `s`,
+/// otherwise returns `None`.
+fn slice_find<T: PartialEq>(s: &[T], needle: &[T]) -> Option<usize> {
+    (0..(s.len() + 1).saturating_sub(needle.len())).find(|&i| s[i..].starts_with(needle))
+}
+
+impl Editor {
+    /// Initialize the text editor.
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if an error occurs when enabling termios raw mode, creating the signal hook
+    /// or when obtaining the terminal window size.
+    #[allow(clippy::field_reassign_with_default)]
+    pub fn new(config: Config) -> Result<Self, Error> {
+        sys::register_winsize_change_signal_handler()?;
+        let mut editor = Self::default();
+        editor.quit_times = config.quit_times;
+        editor.config = config;
+
+        // Enable raw mode and store the original (non-raw) terminal mode.
+        editor.orig_term_mode = Some(sys::enable_raw_mode()?);
+        editor.update_window_size()?;
+
+        set_status!(editor, "{}", HELP_MESSAGE);
+
+        Ok(editor)
+    }
+}
