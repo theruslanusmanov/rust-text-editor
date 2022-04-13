@@ -67,7 +67,7 @@ impl Config {
                     "message_duration" =>
                         conf.message_dur = Duration::from_secs_f32(parse_value(value)?),
                     "show_line_numbers" => conf.show_line_num = parse_value(value)?,
-                    _ => return Err(format!("Invalid keyL {}", key))
+                    _ => return Err(format!("Invalid key: {}", key))
                 };
                 Ok(())
             })?;
@@ -79,7 +79,7 @@ impl Config {
 
 /// Process an INI file.
 ///
-/// The `kv_fn` function will be called for each key-value pair in the file. Tyoically, this
+/// The `kv_fn` function will be called for each key-value pair in the file. Typically, this
 /// function will update a configuration instance.
 pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
     where F: FnMut(&str, &str) -> Result<(), String> {
