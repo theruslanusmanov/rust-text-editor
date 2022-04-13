@@ -125,4 +125,32 @@ mod tests {
         fs::write(&file_path, ini_content).expect("Could not write INI file");
         process_ini_file(&file_path, kv_fn)
     }
+
+    #[test]
+    fn valid_ini_processing() {
+        let ini_content = "# Comment A\
+        ; Comment B
+        a = c
+            # Below is an empty line
+
+            variable = 4
+        a = d5
+        u = v = w ";
+        let expected = vec![
+            (String::from("a"), String::from(" c")),
+            (String::from("variable"), String::from(" 4")),
+            (String::from("a"), String::from(" d5")),
+            (String::from("u"), String::from(" v = w ")),
+        ];
+
+        let mut kvs = Vec::new();
+        let kv_fn = &mut |key: &str, value: &str| {
+            kvs.push((String::from(key), String::from(value)));
+            Ok(())
+        };
+
+        ini_processing_helper(ini_content, kv_fn).unwrap();
+
+        assert_eq!(kvs, expected);
+    }
 }
