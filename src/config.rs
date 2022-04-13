@@ -110,5 +110,19 @@ pub fn parse_values<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<Vec<T>
 
 #[cfg(test)]
 mod tests {
-    todo!();
+    use std::ffi::{OsStr, OsString};
+    use std::{env, fs};
+
+    use serial_test::serial;
+    use templife::TempDir;
+
+    use super::*;
+
+    fn ini_processing_helper<F>(ini_content: &str, kv_fn: &mut F) -> Result<(), Error>
+    where F: FnMut(&str, &str) -> Result<(), String> {
+        let tmp_dir = TempDir::new().expect("Could not create temporary directory");
+        let file_path = tmp_dir.path().join("test_config.ini");
+        fs::write(&file_path, ini_content).expect("Could not write INI file");
+        process_ini_file(&file_path, kv_fn)
+    }
 }
