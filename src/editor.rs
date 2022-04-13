@@ -199,4 +199,71 @@ impl Editor {
         }
         self.update_cursor_x_position();
     }
+
+    /// Update the cursor x position. If the cursor y position has changed, the current position
+    /// might be illegal (x is further right than the last character of the row). If that is the
+    /// case, clamp `self.cursor.x`.
+    fn update_cursor_x_position(&mut self) {
+        self.cursor.x = self.cursor.x.min(self.current_row().map_or(0, |row| row.chars.len()));
+    }
+
+    /// Run a loop to obtain the key that was pressed. At each iteration of the loop (until a key is
+    /// pressed), we listen to the `ws_changed` channel to check if a window size change signal has
+    /// been received. When bytes are received, we match to a corresponding `Key`. In particular,
+    /// we handle ANSI escape codes to return `Key::Delete`, `Key::Home` etc.
+    fn loop_until_keypress(&mut self) -> Result<Key, Error> {
+        loop {
+            // Handle window size if a signal has be received
+            if sys::has_window_size_changed() {
+                self.update_window_size()?;
+                self.refresh_screen()?;
+            }
+            let mut bytes = sys::stdin()?.bytes();
+            // Match on the next byte received or, if the first byte is <ESC> ('\x1b'), on the next
+            // few bytes.
+            match bytes.next().transpose()? {
+                Some(b'\x1b') => {
+                    return Ok(match bytes.next().transpose()? {
+                        Some(b @ (b'[' | b'O')) => match (b, bytes.next().transpose()?) {
+                            (b'[', Some(b'A')) => Key::Arrow(AKey::Up),
+                            (b'[', Some(b'B')) => Key::Arrow(AKey::Down),
+                            (b'[', Some(b'C')) => Key::Arrow(AKey::Right),
+                            (b'[', Some(b'D')) => Key::Arrow(AKey::Left),
+                            (b'[' | b'O', Some(b'H')) => Key::Home,
+                            (b'[' | b'O', Some(b'F')) => Key::End,
+                            (b'[', mut c @ Some(b'0'..=b'8')) => {
+                                let mut d = bytes.next().transpose()?;
+                                if let (Some(b'1'), Some(b';')) = (c, d) {
+                                    // 1 is the default modifier value. Therefore, <ESC>[1;5C is
+                                    // equivalent to <ESC>[5C, etc.
+                                    c = bytes.next().transpose()?;
+                                    d = bytes.next().transpose()?;
+                                }
+                                match (c, d) {
+                                    (Some(c), Some(b'~')) if c == b'1' || c == b'7' => Key::Home,
+                                    (Some(c), Some(b'~')) if c == b'4' || c == b'8' => Key::End,
+                                    (Some(b'3'), Some(b'~')) => Key::Delete,
+                                    (Some(b'5'), Some(b'~')) => Key::Page(PageKey::Up),
+                                    (Some(b'6'), Some(b'~')) => Key::Page(PageKey::Down),
+                                    (Some(b'5'), Some(b'A')) => Key::CtrlArrow(AKey::Up),
+                                    (Some(b'5'), Some(b'B')) => Key::CtrlArrow(AKey::Down),
+                                    (Some(b'5'), Some(b'C')) => Key::CtrlArrow(AKey::Right),
+                                    (Some(b'5'), Some(b'D')) => Key::CtrlArrow(AKey::Left),
+                                    _ => Key::Escape,
+                                }
+                            }
+                            (b'O', Some(b'a')) => Key::CtrlArrow(AKey::Up),
+                            (b'O', Some(b'b')) => Key::CtrlArrow(AKey::Down),
+                            (b'O', Some(b'c')) => Key::CtrlArrow(AKey::Right),
+                            (b'O', Some(b'd')) => Key::CtrlArrow(AKey::Left),
+                            _ => Key::Escape,
+                        },
+                        _ => Key::Escape,
+                    });
+                }
+                Some(a) => return Ok(Key::Char(a)),
+                None => continue,
+            }
+        }
+    }
 }
