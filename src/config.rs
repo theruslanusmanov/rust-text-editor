@@ -153,4 +153,22 @@ mod tests {
 
         assert_eq!(kvs, expected);
     }
+
+    #[test]
+    fn invalid_ini_processing() {
+        let ini_content = "# Comment A
+        ; Comment B
+        a = c
+            # Below is an empty line
+
+           Invalid line
+        a = d5
+        u = v = w ";
+        let kv_fn = &mut |_: &str, _: &str| Ok(());
+        match ini_processing_helper(ini_content, kv_fn) {
+            Ok(_) => panic!("process_ini_file should return an error"),
+            Err(Error::Config(_, 6, s)) if s == "No '='" => (),
+            Err(e) => panic!("Unexpected error {:?}", e)
+        }
+    }
 }
