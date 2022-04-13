@@ -98,11 +98,15 @@ pub fn process_ini_file<F>(path: &Path, kv_fn: &mut F) -> Result<(), Error>
 }
 
 /// Trim a value (right-hand side of a key=value INI line) and parses it.
-pub fn parse_value<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<T, String> { todo!() }
+pub fn parse_value<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<T, String> {
+    value.trim().parse().map_err(|e| format!("Parser error: {}", e))
+}
 
 /// Split a comma-separated list of values (right-hand side of a key=value1, value2, ... INI line) and
 /// parse it as a Vec.
-pub fn parse_values<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<Vec<T>, String> { todo!() }
+pub fn parse_values<T: FromStr<Err=E>, E: Display>(value: &str) -> Result<Vec<T>, String> {
+    value.split(',').map(parse_value).collect()
+}
 
 #[cfg(test)]
 mod tests {
