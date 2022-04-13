@@ -339,4 +339,53 @@ impl Editor {
         self.n_bytes += 1;
         self.dirty = true;
     }
+
+    /// Insert a new line at the current cursor position and move the cursor to the start of the new
+    /// line. If the cursor is in the middle of a row, split off that row.
+    fn insert_new_line(&mut self) {
+        let (position, new_row_chars) = if self.cursor.x == 0 {
+            (self.cursor.y, Vec::new())
+        } else {
+            // self.rows[self.cursor.y] must exist, since cursor.x = 0 for any cursor.y ≥ row.len()
+            let new_chars = self.rows[self.cursor.y].chars.split_off(self.cursor.x);
+            self.update_row(self.cursor.y, false);
+            (self.cursor.y + 1, new_chars)
+        };
+        self.rows.insert(position, Row::new(new_row_chars));
+        self.update_row(position, false);
+        self.update_screen_cols();
+        self.cursor.move_to_next_line();
+        self.dirty = true;
+    }
+
+    /// Delete a character at the current cursor position. If the cursor is located at the beginning
+    /// of a row that is not the first or last row, merge the current row and the previous row. If
+    /// the cursor is located after the last row, move up to the last character of the previous row.
+    fn delete_char(&mut self) {
+        if self.cursor.x > 0 {
+            let row = &mut self.rows[self.cursor.y];
+            // Obtain the number of bytes to be removed: could be 1-4 (UTF-8 character size).
+            let n_bytes_to_remove = row.get_char_size(row.cx2rx[self.cursor.x] - 1);
+            row.chars.splice(self.curor.x - n_bytes_to_remove..self.cursor.x, iter::empty());
+            self.update_row(self.cursor.y, false);
+            self.cursor.x -= n_bytes_to_remove;
+            self.dirty = if self.is_empty() { self.fi.e_name.is_some() } else { true };
+            self.n_bytes -= n_bytes_to_remove as u64;
+        } else if self.cursor.y < self.rows.len() && self.cursor.y > 0 {
+            let row = self.rows.remove(self.cursor.y);
+            let previous_row = &mut self.rows[self.cursor.y - 1];
+            self.cursor.x = previous_row.chars.len();
+            previous_row.chars.extend(&row.chars);
+            self.update_row(self.cursor.y - 1, true);
+            self.update_row(self.cursor.y, false);
+            // The number of rows has changed. The left padding may need to be updated.
+            self.update_screen_cols();
+            self.dirty = true;
+            self.cursor.y -= 1;
+        } else if self.cursor.y == self.rows.len() {
+            // If the cursor is located after the last row, pressing backspace is equivalent to
+            // pressing the left arrow key.
+            self.move_cursor(&AKey::Left);
+        }
+    }
 }
