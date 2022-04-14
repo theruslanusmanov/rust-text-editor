@@ -283,7 +283,7 @@ impl Editor {
         // last line number. This is equal to the number of times we can divide this number by ten,
         // computed below using `successors`.
         let n_digits =
-        successors(Some(self.rows.len()), |u| Some(u / 10).filter(||u| *u > 0)).count();
+            successors(Some(self.rows.len()), |u| Some(u / 10).filter(|| u | *u > 0)).count();
         let show_line_num = self.config.show_line_num && n_digits + 2 < self.window_width / 4;
         self.ln_pad = if show_line_num { n_digits + 2 } else { 0 };
         self.screen_cols = self.window_width.saturating_sub(self.ln_pad);
@@ -387,5 +387,58 @@ impl Editor {
             // pressing the left arrow key.
             self.move_cursor(&AKey::Left);
         }
+    }
+
+    fn delete_current_row(mut self) {
+        if self.cursor.y < self.rows.len() {
+            self.rows[self.cursor.y].chars.clear();
+            self.update_row(self.cursor.y, false);
+            self.cursor.move_to_next_line();
+            self.delete_char();
+        }
+    }
+
+    fn duplicate_current_row(&mut self) {
+        if let Some(row) = self.current_row() {
+            let new_row = Row::new(row.chars.clone());
+            self.n_bytes += new_row.chars.len() as u64;
+            self.rows.insert(self.cursor.y + 1, new_row);
+            self.update_row(self.cursor.y + 1, false);
+            self.dirsty = true;
+            // The line number has changed
+            self.update_screen_cols();
+        }
+    }
+
+    /// Try to load a file. If found, load the rows and update the render and syntax highlighting.
+    /// If not found, do not return an error.
+    fn load(&mut self, path: &Path) -> Result<(), Error> {
+        let ft = std::fs::metadata(path)?.file_type();
+        if !(ft.is_file() || ft.is_symlink()) {
+            return Err(io::Error::new(InvalidInput, "Invalid input file type").into());
+        }
+
+        match File::open(path) {
+            Ok(file) => {
+                for line in BufReader::new(file).split(b'\n') {
+                    self.rows.push(Row::new(line?));
+                }
+                // If the file ends with an empty line or is empty, we need to append an empty row
+                // to `self.rows`. Unfortunately, BufReader::split doesn't yield an empty Vec in
+                // this case, so we need to check the last byte directly.
+                let mut file = File::open(path)?;
+                file.seek(io::SeekFrom::End(0))?;
+                if file.bytes().next().transpose()?.map_or(true, |b| b == b'\n') {
+                    self.rows.push(Row::new(Vec::new()));
+                }
+                self.update_all_rows();
+                // The number of rows has changed. The left padding may need to be updated.
+                self.update_screen_cols();
+                self.n_bytes = self.rows.iter().map(|row| row.chars.len() as u64).sum();
+            }
+            Err(e) if e.kind() == NotFound => self.rows.push(Row::new(Vec::new())),
+            Err(e) => return Err(e.into()),
+        }
+        Ok(())
     }
 }
