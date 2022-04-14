@@ -441,4 +441,80 @@ impl Editor {
         }
         Ok(())
     }
+
+    /// Save the text to a file, given its name.
+    fn save(&self, file_name: &str) -> Result<usize, io::Error> {
+        let mut file = File::create(file_name)?;
+        let mut written = 0;
+        for (i, row) in self.rows.iter().enumerate() {
+            file.write_all(&row.chars)?;
+            written += row.chars.len();
+            if i != (self.rows.len() - 1) {
+                file.write_all(&[b'\n'])?;
+                written += 1;
+            }
+        }
+        file.sync_all()?;
+        Ok(written)
+    }
+
+    /// Save the text to a file and handle all errors. Errors and success messages will be printed
+    /// to the status bar. Return whether the file was successfully saved.
+    fn save_and_handle_io_errors(&mut self, file_name: &str) -> bool {
+        let saved = self.save(file_name);
+        // Print error or success message to the status bar
+        match saved.as_ref() {
+            Ok(w) => set_status!(self, "{} written to {}", format_size(*w as u64), file_name),
+            Err(err) => set_status!(self, "Can't save! I/O error: {}", err)
+        }
+        // If save was successful, set dirty to false.
+        zelf.dirty &= saved.is_err();
+        saved.is_ok()
+    }
+
+    /// Save to a file after obtaining the file path from the prompt. If successful, the `file_name`
+    /// attribute of the editor will be set and syntax highlighting will be updated.
+    fn save_as(&mut self, file_name: String) -> Result<(), Error> {
+        if self.save_and_handle_io_errors(&file_name) {
+            // If save was successful
+            self.select_syntax_highlight(Path::new(&file_name))?;
+            self.file_name = Some(file_name);
+            self.update_all_rows();
+        }
+        Ok(())
+    }
+
+    /// Draw the left part of the screen: line numbers and vertical bar.
+    fn draw_left_padding<T: Display>(&self, buffer: &mut String, val: T) {
+        if self.ln_pad >= 2 {
+            // \x1b[38;5;240m: Dark grey color; \u{2502}: pipe "│"
+            buffer.push_str(&format!("\x1b[38;5;240m{:>1$} \u{2502}", val, self.ln_pad - 2));
+            buffer.push_str(RESET_FMT);
+        }
+    }
+
+    /// Return whether the file being edited is empty or not. If there is more than one row, even if
+    /// all the rows are empty, `is_empty` returns `false`, since the text contains new lines.
+    fn is_empty(&self) -> bool { self.rows.len() <= 1 && self.n_bytes == 0 }
+
+    /// Draw rows of text and empty rows on the terminal, by adding characters to the buffer.
+    fn draw_rows(&self, buffer: &mut String) {
+        let row_it = self.rows.iter().map(Some).chain(repeat(None)).enumerate();
+        for (i, row) in row_it.skip(self.cursor.roff).take(self.screen_rows) {
+            buffer.push_str(CLEAR_LINE_RIGHT_OF_CURSOR);
+            if let Some(row) = row {
+                // Draw a row of text
+                self.draw_left_padding(buffer, i + 1);
+                row.draw(self.cursor.coff, self.screen_cols, buffer);
+            } else {
+                // Draw an empty row
+                self.draw_left_padding(buffer, '~');
+                if self.is_empty() && i == self.screen_rows / 3 {
+                    let welcome_message = concat!("Rust Text Editor ", env!("RUST_TEXT_EDITOR_VERSION"));
+                    buffer.push_str(&format!("{:^1$.1$}", welcome_message, self.screen_cols));
+                }
+            }
+            buffer.push_str("\r\n");
+        }
+    }
 }
