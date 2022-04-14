@@ -517,4 +517,50 @@ impl Editor {
             buffer.push_str("\r\n");
         }
     }
+
+    /// Draw the status bar on terminal, by adding characters to the buffer.
+    fn draw_status_bar(&self, buffer: &mut String) {
+        // Left part of the status bar.
+        let modified = if self.dirty { " (modified)" } else { "" };
+        let mut left =
+            format!("{:.30}{}", self.file_name.as_deref().unwrap_or("[No Name]"), modified);
+
+        // Right part of the status bar.
+        let size = format_size(self.n_bytes + self.rows.len().saturating_sub(1) as u64);
+        let right =
+            format!("{} | {} | {}:{}", self.syntax.name, size, self.cursor.y + 1, self.rx() + 1);
+
+        // Draw
+        let rw = self.window_width.saturating_sub(left.len());
+        buffer.push_str(&format!("{}{}{:>4$.4$}{}\r\n", REVERSE_VIDEO, left, right, RESET_FMT, rw));
+    }
+
+    /// Draw the message bar on the terminal, by adding characters to the buffer.
+    fn draw_message_bar(&self, buffer: &mut String) {
+        buffer.push_str(CLEAR_LINE_RIGHT_OF_CURSOR);
+        let msg_duration = self.connfig.message_dur;
+        if let Some(sm) = self.status_msg.as_ref().filter(|sm| sm.time.elapsed() < msg_duration) {
+            buffer.push_str(&sm.msg[..sm.msg.len().min(self.window_width)]);
+        }
+    }
+
+    /// Refresh the screen: update the offsets, draw the rows, the status bar, the message bar, and
+    /// move the cursor to the correct position.
+    fn refresh_screen(&mut self) -> Result<(), Error> {
+        self.cursor.scroll(self.rx(), self.screen_rows, self.screen_cols);
+        let mut buffer = format!("{}{}", HIDE_CURSOR, MOVE_CURSOR_TO_START);
+        self.draw_rows(&mut buffer);
+        self.draw_status_bar(&mut buffer);
+        self.draw_message_bar(&mut buffer);
+        let (cursor_x, cursor_y) = if self.prompt_mode.is_none() {
+            // If not in prompt mode, position the cursor according to the `cursor` attributes.
+            (self.rx() - self.cursor.coff + 1 + self.ln_pad, self.cursor.y - self.cursor.roff + 1)
+        } else {
+            // If in prompt mode, position the cursor on the prompt line at the end of the line.
+            (self.status_msg.as_ref().map_or(0, |sm| sm.msg.len() + 1), self.screen_rows + 2)
+        };
+        // Finally, print `buffer` and move the cursor
+        print!("{}\x1b[{};{}H{}", buffer, cursor_y, cursor_x, SHOW_CURSOR);
+        io::stdout().flush().map_err(Error::from)
+    }
 }
