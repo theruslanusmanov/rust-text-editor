@@ -617,4 +617,28 @@ impl Editor {
         self.quit_times = quit_times;
         (false, prompt_mode)
     }
+
+    /// Try to find a query, this is called after pressing Ctrl-F and for each key that is pressed.
+    /// `last_match` is the last row that was matched, `forward` indicates whether to search forward
+    /// or backward. Returns the row of a new match, or `None` if the search was unsuccessful.
+    #[allow(clippy::trivially_copy_pass_by_ref)] // This Clippy recommendation is only relevant on 32 bit platforms.
+    fn find(&mut self, query: &str, last_match: &Option<usize>, forward: bool) -> Option<usize> {
+        let num_rows = self.rows.len();
+        let mut current = last_match.unwrap_or_else(|| num_rows.saturating_sub(1));
+        for _ in 0..num_rows {
+            current = (current + if forward { 1 } else { num_rows - 1 }) % num_rows;
+            let row = &mut self.rows[current];
+            if let Some(cx) = slice_find(&row.chars, query.as_bytes()) {
+                self.cursor.y = current as usize;
+                self.cursor.x = cx;
+                // Try to reset the column offset; if the match is after the offset, this
+                // will be updated in self.cursor.scroll() so that the result is visible
+                self.cursor.coff = 0;
+                let rx = row.cx2rx[cx];
+                row.match_segment = Some(rx..rx + query.len());
+                return Some(current);
+            }
+        }
+        None
+    }
 }
