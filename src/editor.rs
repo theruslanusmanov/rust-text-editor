@@ -673,3 +673,16 @@ impl Editor {
         }
     }
 }
+
+impl Drop for Editor {
+    /// When the editor is dropped, restore the original terminal mode.
+    fn drop(&mut self) {
+        if let Some(orig_term_mode) = self.orig_term_mode.take() {
+            sys::set_term_mode(&orig_term_mode).expect("Could not restore original terminal mode.");
+        }
+        if !thread::panicking() {
+            print!("{}{}", CLEAR_SCREEN, MOVE_CURSOR_TO_START);
+            io::stdout().flush().expect("Could not flush stdout");
+        }
+    }
+}
