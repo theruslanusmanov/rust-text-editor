@@ -782,3 +782,27 @@ impl PromptMode {
         Ok(None)
     }
 }
+
+/// The state of the prompt after processing a keypress event.
+enum PromptState {
+    // Active contains the current buffer
+    Active(String),
+    // Completed contains the final string
+    Completed(String),
+    Cancelled,
+}
+
+/// Process a prompt keypress event and return the new state for the prompt.
+fn process_prompt_keypress(mut buffer: String, key: &Key) -> PromptState {
+    match key {
+        Key::Char(b'\r') => return PromptState::Completed(buffer),
+        Key::Escape | Key::Char(EXIT) => return PromptState::Cancelled,
+        Key::Char(BACKSPACE | DELETE_BIS) => {
+            buffer.pop();
+        }
+        Key::Char(c @ 0..=126) if !c.is_ascii_control() => buffer.push(*c as char),
+        // No-op
+        _ => (),
+    }
+    PromptState::Active(buffer)
+}
