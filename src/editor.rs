@@ -698,3 +698,15 @@ enum PromptMode {
     /// Execute(prompt buffer)
     Execute(String)
 }
+
+impl PromptMode {
+    /// Return the status message to print for the selected `PromptMode`.
+    fn status_msg(&self) -> String {
+        match self {
+            Self::Save(buffer) => format!("Save as: {}", buffer),
+            Self::Find(buffer, ..) => format!("Search (Use ESC/Arrows/Enter): {}", buffer),
+            Self::GoTo(buffer) => format!("Enter line number[:column number]: {}", buffer),
+            Self::Execute(buffer) => format!("Command to execute: {}", buffer),
+        }
+    }
+}
