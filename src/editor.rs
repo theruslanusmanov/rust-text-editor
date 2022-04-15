@@ -668,7 +668,7 @@ impl Editor {
                     (true, _) => return Ok(()),
                     (false, prompt_mode) => prompt_mode,
                 },
-                Some(prompt_mode) => prompt_mode.process_keypress(selfm &key)?
+                Some(prompt_mode) => prompt_mode.process_keypress(selfm & key)?
             }
         }
     }
@@ -696,7 +696,7 @@ enum PromptMode {
     /// GoTo(prompt buffer)
     GoTo(String),
     /// Execute(prompt buffer)
-    Execute(String)
+    Execute(String),
 }
 
 impl PromptMode {
@@ -708,5 +708,77 @@ impl PromptMode {
             Self::GoTo(buffer) => format!("Enter line number[:column number]: {}", buffer),
             Self::Execute(buffer) => format!("Command to execute: {}", buffer),
         }
+    }
+
+    /// Process a keypress event for the selected `PromptMode`.
+    fn process_keypress(self, ed: &mut Editor, key: &Key) -> Result<Option<Self>, Error> {
+        ed.status_msg = None;
+        match self {
+            Self::Save(b) => match process_prompt_keypress(b, key) {
+                PromptState::Active(b) => return Ok(Some(Self::Save(b))),
+                PromptState::Cancelled => set_status!(ed, "Save aborted"),
+                PromptState::Completed(file_name) => ed.save_as(file_name)?,
+            },
+            Self::Find(b, saved_cursor, last_match) => {
+                if let Some(row_idx) = last_match {
+                    ed.rows[row_idx].match_segment = None;
+                }
+                match process_prompt_keypress(b, key) {
+                    PromptState::Active(query) => {
+                        let (last_match, forward) = match key {
+                            Key::Arrow(AKey::Right | AKey::Down) | Key::Char(FIND) =>
+                                (last_match, true),
+                            Key::Arrow(AKey::Left | AKey::Up) => (last_match, false),
+                            _ => (None, true),
+                        };
+                        let curr_match = ed.find(&query, &last_match, forward);
+                        return Ok(Some(Self::Find(query, saved_cursor, curr_match)));
+                    }
+                    // The prompt was cancelled. Restore the previous position.
+                    PromptState::Cancelled => ed.cursor = saved_cursor,
+                    // Cursor has already been moved, do nothing
+                    PromptState::Completed(_) => (),
+                }
+            }
+            Self::GoTo(b) => match process_prompt_keypress(b, key) {
+                PromptState::Active(b) => return Ok(Some(Self::GoTo(b))),
+                PromptState::Cancelled => (),
+                PromptState::Completed(b) => {
+                    let mut split = b
+                        .splitn(2, ':')
+                        // saturating_sub: Lines and cols are 1-indexed
+                        .map(|u| u.trim().parse().map(|s: usize| s.saturating_sub(1)));
+                    match (split.next().transpose(), split.next().transpose()) {
+                        (Ok(Some(y)), Ok(x)) => {
+                            ed.cursor.y = y.min(ed.rows.len());
+                            if let Some(rx) = x {
+                                ed.cursor.x = ed.current_row().map_or(0, |r| r.rx2cx[rx]);
+                            } else {
+                                ed.update_cursor_x_position();
+                            }
+                        }
+                        (Err(e), _) | (_, Err(e)) => set_status!(ed, "Parsing error: {}", e),
+                        (Ok(None), _) => (),
+                    }
+                }
+            },
+            Self::Execute(b) => match process_prompt_keypress(b, key) {
+                PromptState::Active(b) => return Ok(Some(Self::Execute(b))),
+                PromptState::Cancelled => (),
+                PromptState::Completed(b) => {
+                    let mut args = b.split_whitespace();
+                    match Command::new(args.next().unwrap_or_default()).args(args).output() {
+                        Ok(out) if !out.status.success() =>
+                            set_status!(ed, "{}", String::from_utf8_lossy(&out.stderr).trim_end()),
+                        Ok(out) => out.stdout.into_iter().for_each(|c| match c {
+                            b'\n' => ed.insert_new_line(),
+                            c => ed.insert_byte(c),
+                        }),
+                        Err(e) => set_status!(ed, "{}", e),
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
 }
