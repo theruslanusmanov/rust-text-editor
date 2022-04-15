@@ -668,7 +668,7 @@ impl Editor {
                     (true, _) => return Ok(()),
                     (false, prompt_mode) => prompt_mode,
                 },
-                Some(prompt_mode) => prompt_mode.process_keypress(selfm &key)?;
+                Some(prompt_mode) => prompt_mode.process_keypress(selfm &key)?
             }
         }
     }
@@ -685,4 +685,16 @@ impl Drop for Editor {
             io::stdout().flush().expect("Could not flush stdout");
         }
     }
+}
+
+/// The prompt mode.
+enum PromptMode {
+    /// Save(prompt buffer)
+    Save(String),
+    /// Find(prompt buffer, saved cursor state, last match)
+    Find(String, CursorState, Option<usize>),
+    /// GoTo(prompt buffer)
+    GoTo(String),
+    /// Execute(prompt buffer)
+    Execute(String)
 }
