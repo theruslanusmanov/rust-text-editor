@@ -563,4 +563,58 @@ impl Editor {
         print!("{}\x1b[{};{}H{}", buffer, cursor_y, cursor_x, SHOW_CURSOR);
         io::stdout().flush().map_err(Error::from)
     }
+
+    /// Process a key that has been pressed, when not in prompt mode. Returns whether the program
+    /// should exit, and optionally the prompt mode to switch to.
+    fn process_keypress(&mut self, key: &Key) -> (bool, Option<PromptMode>) {
+        // This won't be mutated, unless key is Key::Character(EXIT)
+        let mut quit_times = self.config.quit_times;
+        let mut prompt_mode = None;
+
+        match key {
+            Key::Arrow(arrow) | Key::CtrlArrow(arrow) => self.move_cursor(arrow),
+            Key::Page(PageKey::Up) => {
+                self.cursor.y = self.cursor.roff.saturating_sub(self.screen_rows);
+                self.update_cursor_x_position();
+            }
+            Key::Page(PageKey::Down) => {
+                self.cursor.y = (self.cursor.roff + 2 * self.screen_rows - 1).min(self.rows.len());
+                self.update_cursor_x_position();
+            }
+            Key::Home => self.cursor.x = 0,
+            Key::End => self.cursor.x = self.current_row().map_or(0, |row| row.chars.len()),
+            Key::Char(b'\r' | b'\n') => self.insert_new_line(), // Enter
+            Key::Char(BACKSPACE | DELETE_BIS) => self.delete_char(), // Backspace or Ctrl + H
+            Key::Char(REMOVE_LINE) => self.delete_current_row(),
+            Key::Delete => {
+                self.move_cursor(&AKey::Right);
+                self.delete_char();
+            }
+            Key::Escape | Key::Char(REFRESH_SCREEN) => (),
+            Key::Char(EXIT) => {
+                quit_times = self.quit_times - 1;
+                if !self.dirty || quit_times == 0 {
+                    return (true, None);
+                }
+                let times = if quit_times > 1 { "times" } else { "time" };
+                set_status!(self, "Press Ctrl+Q {} more {} to quit.", quit_times, times);
+            }
+            Key::Char(SAVE) => match self.file_name.take() {
+                // TODO: Can we avoid using take() then reassigning the value to file_name?
+                Some(file_name) => {
+                    self.save_and_handle_io_errors(&file_name);
+                    self.file_name = Some(file_name);
+                }
+                None => prompt_mode = Some(PromptMode::Save(String::new())),
+            },
+            Key::Char(FIND) =>
+                prompt_mode = Some(PromptMode::Find(String::new(), self.cursor.clone(), None)),
+            Key::Char(GOTO) => prompt_mode = Some(PromptMode::GoTo(String::new())),
+            Key::Char(DUPLICATE) => self.duplicate_current_row(),
+            Key::Char(EXECUTE) => prompt_mode = Some(PromptMode::Execute(String::new())),
+            Key::Char(c) => self.insert_byte(*c),
+        }
+        self.quit_times = quit_times;
+        (false, prompt_mode)
+    }
 }
