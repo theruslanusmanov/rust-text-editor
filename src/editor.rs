@@ -806,3 +806,76 @@ fn process_prompt_keypress(mut buffer: String, key: &Key) -> PromptState {
     }
     PromptState::Active(buffer)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_size_output() {
+        assert_eq!(format_size(0), "0B");
+        assert_eq!(format_size(1), "1B");
+        assert_eq!(format_size(1023), "1023B");
+        assert_eq!(format_size(1024), "1.00kB");
+        assert_eq!(format_size(1536), "1.50kB");
+        // round down!
+        assert_eq!(format_size(21 * 1024 - 11), "20.98kB");
+        assert_eq!(format_size(21 * 1024 - 10), "20.99kB");
+        assert_eq!(format_size(21 * 1024 - 3), "20.99kB");
+        assert_eq!(format_size(21 * 1024), "21.00kB");
+        assert_eq!(format_size(21 * 1024 + 3), "21.00kB");
+        assert_eq!(format_size(21 * 1024 + 10), "21.00kB");
+        assert_eq!(format_size(21 * 1024 + 11), "21.01kB");
+        assert_eq!(format_size(1024 * 1024 - 1), "1023.99kB");
+        assert_eq!(format_size(1024 * 1024), "1.00MB");
+        assert_eq!(format_size(1024 * 1024 + 1), "1.00MB");
+        assert_eq!(format_size(100 * 1024 * 1024 * 1024), "100.00GB");
+        assert_eq!(format_size(313 * 1024 * 1024 * 1024 * 1024), "313.00TB");
+    }
+
+    #[test]
+    fn editor_insert_byte() {
+        let mut editor = Editor::default();
+        let editor_cursor_x_before = editor.cursor.x;
+
+        editor.insert_byte(b'X');
+        editor.insert_byte(b'Y');
+        editor.insert_byte(b'Z');
+
+        assert_eq!(editor.cursor.x, editor_cursor_x_before + 3);
+        assert_eq!(editor.rows.len(), 1);
+        assert_eq!(editor.n_bytes, 3);
+        assert_eq!(editor.rows[0].chars, [b'X', b'Y', b'Z']);
+    }
+
+    #[test]
+    fn editor_insert_new_line() {
+        let mut editor = Editor::default();
+        let editor_cursor_y_before = editor.cursor.y;
+
+        for _ in 0..3 {
+            editor.insert_new_line();
+        }
+
+        assert_eq!(editor.cursor.y, editor_cursor_y_before + 3);
+        assert_eq!(editor.rows.len(), 3);
+        assert_eq!(editor.n_bytes, 0);
+
+        for row in &editor.rows {
+            assert_eq!(row.chars, []);
+        }
+    }
+    #[test]
+    fn editor_delete_char() {
+        let mut editor = Editor::default();
+        for b in "Hello!".as_bytes() {
+            editor.insert_byte(*b);
+        }
+        editor.delete_char();
+        assert_eq!(editor.rows[0].chars, "Hello".as_bytes());
+        editor.move_cursor(&AKey::Left);
+        editor.move_cursor(&AKey::Left);
+        editor.delete_char();
+        assert_eq!(editor.rows[0].chars, "Helo".as_bytes());
+    }
+}
