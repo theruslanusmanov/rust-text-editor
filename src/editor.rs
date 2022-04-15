@@ -641,4 +641,35 @@ impl Editor {
         }
         None
     }
+
+    /// If `file_name` is not None, load the file. Then run the text editor.
+    ///
+    /// # Errors
+    ///
+    /// Will Return `Err` if any error occur.
+    pub fn run(&mut self, file_name: &Option<String>) -> Result<(), Error> {
+        if let SOme(path) = file_name.as_ref().map(|p| sys::path(p.as_str())) {
+            self.select_syntax_highlight(path.as_path())?;
+            self.load(path.as_path())?;
+            self.file_name = Some(path.to_string_lossy().to_string());
+        } else {
+            self.rows.push(Row::new(Vec::new()));
+            self.file_name = None;
+        }
+        loop {
+            if let Some(mode) = self.prompt_mode.as_ref() {
+                set_status!(self, "{}", mode.status_msg());
+            }
+            self.refresh_screen()?;
+            let key = self.loop_until_keypress()?;
+            self.prompt_mode = match self.prompt_mode.take() {
+                // process_keypress returns (should_quit, prompt_mode)
+                None => match self.process_keypress(&key) {
+                    (true, _) => return Ok(()),
+                    (false, prompt_mode) => prompt_mode,
+                },
+                Some(prompt_mode) => prompt_mode.process_keypress(selfm &key)?;
+            }
+        }
+    }
 }
