@@ -4,3 +4,4 @@ mod error;
 mod config;
 mod editor;
 mod syntax;
+mod terminal;
