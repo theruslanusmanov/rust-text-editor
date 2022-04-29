@@ -5,3 +5,4 @@ mod config;
 mod editor;
 mod syntax;
 mod terminal;
+mod unix;
