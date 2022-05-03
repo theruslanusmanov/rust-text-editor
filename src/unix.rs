@@ -31,3 +31,6 @@ pub fn get_window_size() -> Result<(usize, usize), Error> {
         .filter(|ws| ws.ws_col != 0 && ws.ws_row != 0)
         .map_or(Err(Error::InvalidWindowSize), |ws| Ok((ws.ws_row as usize, ws.ws_col as usize)))
 }
+
+/// Stores whether the window size has changed since last call to `has_window_size_changed`.
+static WSC: AtomicBool = AtomicBool::new(false);
