@@ -34,3 +34,53 @@ pub fn get_window_size() -> Result<(usize, usize), Error> {
 
 /// Stores whether the window size has changed since last call to `has_window_size_changed`.
 static WSC: AtomicBool = AtomicBool::new(false);
+
+/// Handle a change in window size.
+extern "C" fn handle_wsize(_: c_int, _: *mut siginfo_t, _: *mut c_void) { WSC.store(true, Relaxed) }
+
+/// Register a signal handler that sets a global variable when the window size changes.
+/// After calling this function, use `has_window_size_changed` to query the global variable.
+pub fn register_winsize_change_signal_handler() -> Result<(), Error> {
+    unsafe {
+        let mut maybe_sa = std::mem::MaybeUninit::<sigaction>::uninit();
+        cerr(libc::sigemptyset(&mut (*maybe_sa.as_mut_ptr()).sa_mask))?;
+        // We could use sa_handler here, however, sigaction defined in libc does not have
+        // sa_handler field, so we use sa_sigaction instead.
+        (*maybe_sa.as_mut_ptr()).sa_flags = SA_SIGINFO;
+        (*maybe_sa.as_mut_ptr()).sa_sigaction = handle_wsize as sighandler_t;
+        cerr(libc::sigaction(libc::SIGWINCH, maybe_sa.as_ptr(), std::ptr::null_mut()))
+    }
+}
+
+/// Check if the windows size has changed since the last call to this function.
+/// The `register_winsize_change_signal_handler` needs to be called before this function.
+pub fn has_window_size_changed() -> bool { WSC.swap(false, Relaxed) }
+
+/// Set the terminal mode.
+pub fn set_term_mode(term: &TermMode) -> Result<(), Error> {
+    cerr(unsafe { lubc::tcsetattr(STDIN_FILENO, TCSADRAIN, term) })
+}
+
+/// Setup the termios to enable raw mode, and return the original termios.
+///
+/// termios manual is available at: <http://man7.org/linux/man-pages/man3/termios.3.html>
+pub fn enable_raw_mode() -> Result<TermMode, Error> {
+    let mut maybe_term = std::mem::MaybeUninit::<TermMode>::uninit();
+    cerr(unsafe { libc::tcgetattr(STDIN_FILENO, maybe_term.as_mut_ptr()) })?;
+    let orig_term = unsafe { maybe_term.assume_init() };
+    let mut term = orig_term;
+    unsafe { libc::cfmakeraw(&mut term) };
+    // Set the minimum number of characters for non-canonical reads
+    term.c_cc[VMIN] = 0;
+    // Set the timeout in deciseconds for non-canonical reads
+    term.c_cc[VTIME] = 1;
+    set_term_mode(&term)?;
+    Ok(orig_term)
+}
+
+#[allow(clippy::unnecessary_wraps)] // Result required on other platforms
+pub fn stdin() -> std::io::Result<std::io::Stdin> { Ok(std::io::stdin()) }
+
+pub fn path(filename: &str) -> std::path::PathBuf { std::path::PathBuf::from(filename) }
+
+
