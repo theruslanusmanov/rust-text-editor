@@ -7,3 +7,5 @@ mod syntax;
 mod terminal;
 mod unix;
 mod wasi;
+mod xdg;
+mod windows;
